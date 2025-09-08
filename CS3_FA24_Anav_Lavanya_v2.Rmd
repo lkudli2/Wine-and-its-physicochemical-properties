@@ -1,0 +1,532 @@
+---
+title: "Investigating the relationship between alcohol content in wine and its physicochemical properties "
+author: "Anav Vora and Lavanya Kudli"
+date: "12/16/2024"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+\textbf{\textcolor{blue}{Introduction}}
+The relationship between alcohol content in wine and other physicochemical properties is of particular interest for brewers. In this report, we detail steps for the selection of the best model for predicting the alcohol content and also the best model for estimating the alcohol content. 
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+Wine_Data = read.csv("wines.csv")
+ForPlotting_Wine_Data = Wine_Data
+ForPlotting_Wine_Data$type = as.factor(ForPlotting_Wine_Data$type)
+Wine_Data$type[which(Wine_Data$type=="redwine")] = "1"
+Wine_Data$type[which(Wine_Data$type=="whitewine")] = "0"
+Wine_Data$type = as.numeric(Wine_Data$type)
+```
+
+\medskip
+\textbf{\textcolor{blue}{Data Description}}
+
+We begin our analysis by conducting exploratory data analysis.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+library(ggplot2)
+library(ggpubr)
+f1 <- ggplot(Wine_Data,aes(x=fixed.acidity))+geom_histogram()
+f2 <- ggplot(Wine_Data,aes(x=volatile.acidity))+geom_histogram()
+f3 <- ggplot(Wine_Data,aes(x=citric.acid))+geom_histogram()
+f4 <- ggplot(Wine_Data,aes(x=residual.sugar))+geom_histogram()
+f5 <- ggplot(Wine_Data,aes(x=chlorides))+geom_histogram()
+f6 <- ggplot(Wine_Data,aes(x=free.sulfur.dioxide))+geom_histogram()
+f7 <- ggplot(Wine_Data,aes(x=total.sulfur.dioxide))+geom_histogram()
+f8 <- ggplot(Wine_Data,aes(x=density))+geom_histogram()
+f9 <- ggplot(Wine_Data,aes(x=pH))+geom_histogram()
+f10 <- ggplot(Wine_Data,aes(x=sulphates))+geom_histogram()
+f11 <- ggplot(Wine_Data,aes(x=alcohol))+geom_histogram()
+f12 <- ggplot(ForPlotting_Wine_Data,aes(x=type))+geom_bar()
+ggarrange(f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,nrow=3,ncol=4)
+```
+From the historgam we see that some predictors appear to have a normal distribution such as fixed.acidity, citric.acid, pH, alcohol, free.sulphur.dioxide, and density. Total.sulphur.dioxide actually seems to have a bimodal distribution. The number of whitewines are more than the redwines in the dataset.The rest of the predictors seem to have a skewed distribution (volatile.acidity,residual.sugar,chlorides, and sulphates).
+
+Next, we use scatter plots and box and whisker plots to get a rough idea regarding the influence of various predictors on the alcohol percentage.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+g1 <- ggplot(Wine_Data,aes(x=fixed.acidity,y=alcohol))+geom_point()
+g2 <- ggplot(Wine_Data,aes(x=volatile.acidity,y=alcohol))+geom_point()
+g3 <- ggplot(Wine_Data,aes(x=citric.acid,y=alcohol))+geom_point()
+g4 <- ggplot(Wine_Data,aes(x=residual.sugar,y=alcohol))+geom_point()
+g5 <- ggplot(Wine_Data,aes(x=chlorides,y=alcohol))+geom_point()
+g6 <- ggplot(Wine_Data,aes(x=free.sulfur.dioxide,y=alcohol))+geom_point()
+g7 <- ggplot(Wine_Data,aes(x=total.sulfur.dioxide,y=alcohol))+geom_point()
+g8 <- ggplot(Wine_Data,aes(x=density,y=alcohol))+geom_point()
+g9 <- ggplot(Wine_Data,aes(x=pH,y=alcohol))+geom_point()
+g10 <- ggplot(Wine_Data,aes(x=sulphates,y=alcohol))+geom_point()
+g11 <- ggplot(ForPlotting_Wine_Data,aes(x=type,y=alcohol))+geom_boxplot()
+ggarrange(g1,g2,g3,g5,g6,g7,g8,g9,g10,g11,nrow=3,ncol=4)
+```
+
+We observe that all the scatter plots contain clouds of data and no particular trend can be seen. Perhaps, 2-D scatter plots do not capture the complex trends in the data. Additionally, the median alcohol contents of both redwine and white wine are close enough. There seem to be some outliers in the redwine.
+
+\medskip
+\textbf{\textcolor{blue}{Model A:  Building for Prediction}}
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+set.seed(1)
+training_indices = sample(1:dim(Wine_Data)[1],0.80*dim(Wine_Data)[1])
+wine_training    = Wine_Data[training_indices,]
+wine_testing     = Wine_Data[-training_indices,]
+full.wine.model = lm(alcohol ~., data=wine_training)
+```
+
+Part 1) AIC criterion 
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+Selection_Based_AIC_Model = step(full.wine.model, direction="both") # using the AIC criterion
+```
+We see that eliminating total sulfur dioxide reduces the AIC value from -6871.24 to -6871.3. Therefore, based on AIC criterion we select a model with 10 predictors and exclude total.sulfur.dioxide.
+
+Part 2) BIC criterion
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+n=dim(Wine_Data)[1]
+Selection_Based_BIC_Model = step(full.wine.model, direction="both", k=log(n)) # using the BIC criterion
+```
+We see that eliminating total sulfur dioxide reduces the AIC value from -6789.89 to -6796.8. Therefore, based on BIC criterion we select a model with 10 predictors and exclude total.sulfur.dioxide.
+
+Part 3) Leaps and bound based methods. We used nvmax as 11 to include all the predictors
+```{r,warning=FALSE, message=FALSE, echo=FALSE}
+library(leaps)
+regsubsets_selection=regsubsets(alcohol ~., data=wine_training, nvmax=11) #we increased it
+rs = summary(regsubsets_selection)
+
+msize = 1:11
+par(mfrow=c(2,2))
+plot(msize, rs$adjr2, xlab="No. of Parameters", ylab = "Adjusted Rsquare")
+plot(msize, rs$cp, xlab="No. of Parameters", ylab = "Mallow's Cp")
+plot(msize, rs$bic, xlab="No. of Parameters", ylab = "BIC")
+
+Leaps_Based_BIC_Model = lm(alcohol ~ . , data=wine_training[,rs$which[which.min(rs$bic),][-1]])
+
+Leaps_Based_AdjR_Model = lm(alcohol ~ . , data=wine_training[,rs$which[which.max(rs$adjr2),][-1]])
+
+Leaps_Based_Cp_Model = lm(alcohol ~ . , data=wine_training[,rs$which[which.min(rs$cp),][-1]])
+```
+From the leaps and bound adjusted R-square we see that the number of parameters chosen is 11 parameters. However from leaps and bound BIC and Cp mallows criterion we see that the chosen value is 10 parameters.
+
+Part 4) Principal component analysis
+```{r,warning=FALSE, message=FALSE, echo=FALSE}
+library(pls)
+Pcr_Based_Model<-pcr(alcohol~., scale=TRUE, data=wine_training, validation="CV", ncomp=11)
+pcrCV<-RMSEP(Pcr_Based_Model, estimate="CV")
+plot(pcrCV)
+```
+
+PCR CV suggests we should use 11 components, which is as many predictors as we have. Basically, we don't need to do PCR then, just use all the predictors
+
+Part 5) Ridge regression
+```{r,warning=FALSE, message=FALSE, echo=FALSE}
+library(MASS)
+wine.ridge <- lm.ridge(alcohol~., 
+                       wine_training, lambda=seq(0, 5e-8, len=31))
+matplot(wine.ridge$lambda, 
+        coef(wine.ridge), type="l", xlab=expression(lambda),
+        ylab=expression(hat(beta)), col=1,ylim=c(-2,2))
+which.min(wine.ridge$GCV)
+abline(v=5.00e-08 )
+```
+We construct a ridge trace plot to determine the appropriate range of $\lambda$, using generalized cross validation (GCV). We obtain an optimal lambda of 5.000000e-08. Our plot is insensitive to lambda meaning the penalty does not seem to have much of an effect on the model. This means we can select the entire model with all the 11 predictors.
+
+Part 6) Lasso regression
+```{r,warning=FALSE, message=FALSE, echo=FALSE}
+library(lars)
+#For lasso the categorical data must be made numerical
+winelasso<-lars(as.matrix(wine_training[,-11]),
+                wine_training$alcohol)
+plot(winelasso)
+```
+The  x-axis is the value of the L1 norm of the coefficients relative to the norm of the LS solution  
+t. As this value increases more predictors enter into the model. Initially at lower t-values, only predictor 8 enters the model and at the highest t-value all the predictors enter the model.
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+cv.ml<-cv.lars(as.matrix(wine_training[,-11]),wine_training$alcohol)
+which.min(cv.ml$cv)
+svm<-cv.ml$index[which.min(cv.ml$cv)]
+svm #optimal t
+#Lasso coefficients
+predict(winelasso,s=svm, type="coef", mode="fraction")$coef
+```
+The optimal value of t can be selected by Cross-Validation, we see that the optimal t value is 0.989. None of the coefficients obtained by LASSO have a non-zero value, all the predictors are retained.
+
+
+\medskip
+\textbf{\textcolor{blue}{Model A Testing}}
+
+Overall we have 4 models for testing. The first is using all the predictors for regression as suggested by PCR and the leap-and-bounds algorithm with adjusted $R^2$. Next, the greedy algorithms based on AIC and BIC, and the leap-and-bounds algorithm with BIC and Mallow's Cp suggest that all the predictors except total sulphur dioxide should be used for regression giving us the second model. The final two models correspond to ridge and lasso regression.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+#Testing the all predictor model which is same as that found by leap-and-bounds 
+#using adjusted R-square
+RMSE_all_pred_model = sqrt(mean((wine_testing$alcohol -
+                                   predict.lm(Leaps_Based_AdjR_Model,wine_testing))^2))
+RMSE_all_pred_model
+#Testing model without total sulfur dioxide which is same as that found 
+#by leap-and-bounds using BIC
+RMSE_no_tot_Sulfur_pred_model = sqrt(mean((wine_testing$alcohol -
+                                             predict.lm(Leaps_Based_BIC_Model,wine_testing))^2))
+RMSE_no_tot_Sulfur_pred_model
+#Testing model developed using ridge regression
+RMSE_ridge_model = sqrt(mean((wine_testing$alcohol -
+                                cbind(1, as.matrix(wine_testing[,-11]))%*% coef(wine.ridge)[31,])^2))
+RMSE_ridge_model
+#Testing model developed using LASSO regression
+RMSE_LASSO_model = sqrt(mean((wine_testing$alcohol -
+                                predict(winelasso, as.matrix(wine_testing[,-11])
+, s=svm, mode="fraction")$fit)^2))
+RMSE_LASSO_model
+```
+The smallest RMSE is (0.4543) for the model made without total sulphur dioxide obtained from the greedy algorithms based on AIC and BIC, and the leap-and-bounds algorithm with BIC and Mallow's Cp.
+
+We will do diagnostics for that model. 
+First looking at influential observations
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+wine.predict.leverages = lm.influence(Leaps_Based_BIC_Model)$hat
+n=dim(wine_training)[1]
+p=length(variable.names(Leaps_Based_BIC_Model))
+
+wine.predict.leverages.high = wine.predict.leverages[wine.predict.leverages>2*p/n]
+length(wine.predict.leverages.high)
+
+IQR_alcohol = IQR(wine_training$alcohol)
+QT1_alcohol = quantile(wine_training$alcohol,0.25)
+QT3_alcohol = quantile(wine_training$alcohol,0.75)
+lower_lim_alcohol = QT1_alcohol - IQR_alcohol
+upper_lim_alcohol = QT3_alcohol + IQR_alcohol
+vector_lim_alcohol = c(lower_lim_alcohol,upper_lim_alcohol)
+
+wine.predict.highlev = wine_training[wine.predict.leverages>2*p/n,]
+wine.predict.highlev_lower = wine.predict.highlev[wine.predict.highlev$alcohol <
+                                                    vector_lim_alcohol[1], ]
+wine.predict.highlev_upper = wine.predict.highlev[wine.predict.highlev$alcohol >
+                                                    vector_lim_alcohol[2], ]
+wine.predict.highlev2 = rbind(wine.predict.highlev_lower,wine.predict.highlev_upper)
+dim(wine.predict.highlev2)[1]
+```
+We observe that there are 298 high leverage points of which 21 are bad high leverage points. Next, we examine if there are some points which do not fit the model as well as others points, i.e., if there are any outliers.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+wine.predict.resid = rstudent(Leaps_Based_BIC_Model)
+wine.predict.resid.sorted = sort(abs(wine.predict.resid), decreasing=TRUE)[1:20]
+wine.predict.resid.sorted
+
+bonferroni_cv = qt(.05/(2*n), n-p-1) 
+bonferroni_cv
+
+length(which(wine.predict.resid>abs(bonferroni_cv)))
+```
+We see that the bonferroni cv is -4.43 and there are 12 outliers since 12 studentized residuals have a value large than 4.43.
+
+Finally, we check if there are any individual points that affect the model parameters, i.e., influential points
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+wine.predict.cooks = cooks.distance(Leaps_Based_BIC_Model)
+sort(wine.predict.cooks, decreasing = TRUE)[1:10]
+```
+There is 1 observation has cooks distance above 1, so there is one influential point in the data.
+
+We now test if MLR model assumptions are satisfied. Note that, we do not need to check for independence of error terms (i.e., correlation) as the data we have is not collected in an ordered sequence.
+
+First we check if the variance is constant using the visual test and the bp test.
+
+```{r,warning=FALSE, message=FALSE, echo=FALSE}
+plot(Leaps_Based_BIC_Model,which=1)
+library(lmtest)
+bptest(Leaps_Based_BIC_Model)
+```
+
+We see some extra points on the left.
+
+The hypothesis for the BP test is, 
+
+H0 :the variance is constant
+
+H$\alpha$: the variance is not constant
+
+Since the p-value is less than 0.05, we reject the null and conclude that the variance is not constant.
+
+Next, we check if the error terms are normally distributed by using the following two approaches:-
+
+1) a Q-Q plot
+
+2) a KS test since our n>50
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+plot(Leaps_Based_BIC_Model,which=2)
+ks.test(Leaps_Based_BIC_Model$residuals,"pnorm")
+```
+From the Q-Q plot we see that there is a departure from normality at the lower end and the upper end. 
+
+We also do the KS test with the below hypothesis:
+
+H0: the distribution is normal
+
+H$\alpha$: the distribution is not normal
+
+The p-value of 2.2e-16 is less than 0.05. So, we reject the null hypotheses of normality and conclude that the normality assumption is not satisfied.
+
+Now checking linearity:
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.fixed.acidity = update(Leaps_Based_BIC_Model, .~. -fixed.acidity)$residuals
+x.fixed.acidity = lm(fixed.acidity~.,data=wine_training[,-c(7,11)])$residuals
+plot(x.fixed.acidity, y.fixed.acidity, xlab="Fixed Acidity Residuals",
+     ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.fixed.acidity ~ x.fixed.acidity), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.volatile.acidity = update(Leaps_Based_BIC_Model, .~. -volatile.acidity)$residuals
+x.volatile.acidity = lm(volatile.acidity~.,data=wine_training[,-c(7,11)])$residuals
+plot(x.volatile.acidity, y.volatile.acidity, xlab="Volatile Acidity Residuals", 
+     ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.volatile.acidity ~ x.volatile.acidity), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.citric.acid = update(Leaps_Based_BIC_Model, .~. -citric.acid)$residuals
+x.citric.acid = lm(citric.acid~.,data=wine_training[,-c(7,11)])$residuals
+plot(x.citric.acid, y.citric.acid, xlab="Citric Acidity Residuals", 
+     ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.citric.acid ~ x.citric.acid), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.residual.sugar = update(Leaps_Based_BIC_Model, .~. -residual.sugar)$residuals
+x.residual.sugar = lm(residual.sugar~.,data=wine_training[,-c(7,11)])$residuals
+plot(x.residual.sugar, y.residual.sugar, xlab="Residual Sugars Residuals", 
+     ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.residual.sugar ~ x.residual.sugar), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.chlorides = update(Leaps_Based_BIC_Model, .~. -chlorides)$residuals
+x.chlorides = lm(chlorides~.,data=wine_training[,-c(7,11)])$residuals
+plot(x.chlorides, y.chlorides, xlab="Chlorides Residuals",
+     ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.chlorides ~ x.chlorides), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.free.sulfur.dioxide = update(Leaps_Based_BIC_Model, .~. -free.sulfur.dioxide)$residuals
+x.free.sulfur.dioxide = lm(free.sulfur.dioxide~.,data=wine_training[,-c(7,11)])$residuals
+plot(x.free.sulfur.dioxide, y.free.sulfur.dioxide, xlab="Free Sulphur Dioxide Residuals", 
+     ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.free.sulfur.dioxide ~ x.free.sulfur.dioxide), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.density = update(Leaps_Based_BIC_Model, .~. -density)$residuals
+x.density = lm(density~.,data=wine_training[,-c(7,11)])$residuals
+plot(x.density, y.density, xlab="Density Residuals", 
+     ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.density ~ x.density), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.pH = update(Leaps_Based_BIC_Model, .~. -pH)$residuals
+x.pH = lm(pH~.,data=wine_training[,-c(7,11)])$residuals
+plot(x.pH, y.pH, xlab="pH Residuals", 
+     ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.pH ~ x.pH), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.sulphates = update(Leaps_Based_BIC_Model, .~. -sulphates)$residuals
+x.sulphates = lm(sulphates~.,data=wine_training[,-c(7,11)])$residuals
+plot(x.sulphates, y.sulphates, xlab="pH Residuals", 
+     ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.sulphates ~ x.sulphates), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+From the linearity plot we see that the points appear to be equally scattered around the line. 
+
+Looking at correlation of predictors
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ round(cor(wine_training[,-c(7,11,12)]), dig=2)
+```
+
+We do not see any strong correlations between the predictors selected.
+
+In summary, we note that the model selected for prediction has issues of unusual observations and departures from the assumptions of constant variance and normality required for linear models.
+
+\medskip
+\textbf{\textcolor{blue}{Model B - model selection}}
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+Full_Model = lm(alcohol~.,data = Wine_Data)
+summary(Full_Model)
+```
+We see that the p-value of the full model is less than 0.05 which means that atleast one of the predictors is statistically significant.
+
+We now apply a backward elimination approach starting with the predictors with the highest p-value.
+
+We perform partial F-tests for dropping each predictor. We use the following generic form of the hypothesis test for all fine tuning.
+
+Hypotheses:
+
+H0: $\beta_i = \beta_j =... =\beta_k = 0$
+
+H$\alpha$: Atleast one of $\beta_i$, $\beta_j$, ... $\beta_k$ is not equal to zero
+
+where i, j,..., k are the predictors being dropped together. One or more predictors can be dropped together from the full model.
+
+Decision rule: If the p-value is less than 0.05 then reject the null hypothesis.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+#Dropping 1 by 1 backward approach: first dropping total.sulfur.dioxide (largest p value)
+alcohol.red1 = update(Full_Model, .~. -total.sulfur.dioxide)
+anova(alcohol.red1,Full_Model) 
+```
+Since p-value is > 0.05, we fail to reject the null and say that the reduced model is adequate. Let us now examine if we can drop the next predictor with high p-value i.e chlorides
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+alcohol.red2 = update(alcohol.red1, .~. -chlorides)
+anova(alcohol.red2,Full_Model) 
+```
+
+Since the p-value is < 0.05, we can not accept the reduced model since we reject the null.
+We do not need to perform the model diagnostics again as the selected model A and B are the same.
+Now we perform box-cox as a remedial measure to fix normality deviations. 
+
+```{r,warning=FALSE, message=FALSE, echo=FALSE}
+library(MASS)
+alcohol.transformation = boxcox(alcohol.red1, lambda=seq(-2,2, length=400))
+lambda <- alcohol.transformation$x[which.max(alcohol.transformation$y)]
+lambda
+```
+
+Since 1 is not in the interval, we proceed to perform transformations. From the box-cox results, we see that the optimal lambda -0.446, we round the value and choose -0.4. Notably, 1 and 0 are not in the confidence interval.
+
+Fitting a new model with box-cox transformed "alcohol". We use the box-cox formula to transform our model: $g(Y)=\frac{Y^{\lambda}-1}{\lambda}$ where Y is "alcohol" and $\lambda$ = -0.4
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+Wine_Data.red1 = Wine_Data[,-7]
+Wine_Data.red1$alcohol = (Wine_Data.red1$alcohol^(-0.4)-1)/(-0.4)
+alcohol.red1.transformed = lm(alcohol~ .,data=Wine_Data.red1)
+summary(alcohol.red1.transformed)
+```
+Now we check again for normality and constant variance assumptions again for the new box-cox based model.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+plot(alcohol.red1.transformed,which=1)
+plot(alcohol.red1.transformed,which=2)
+```
+The Q-Q plot of the transformed model still appears to be similar to the previous Q-Q plot of the un-transformed model. The variance plot also does not seem to have changed.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.fixed.acidity = update(alcohol.red1.transformed, .~. -fixed.acidity)$residuals
+x.fixed.acidity = lm(fixed.acidity~.,data=Wine_Data.red1[,-10])$residuals
+plot(x.fixed.acidity, y.fixed.acidity, xlab="Fixed Acidity Residuals", ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.fixed.acidity ~ x.fixed.acidity), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.volatile.acidity = update(alcohol.red1.transformed, .~. -volatile.acidity)$residuals
+x.volatile.acidity = lm(volatile.acidity~.,data=Wine_Data.red1[,-10])$residuals
+plot(x.volatile.acidity, y.volatile.acidity, xlab="Volatile Acidity Residuals", ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.volatile.acidity ~ x.volatile.acidity), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.citric.acid = update(alcohol.red1.transformed, .~. -citric.acid)$residuals
+x.citric.acid = lm(citric.acid~.,data=Wine_Data.red1[,-10])$residuals
+plot(x.citric.acid, y.citric.acid, xlab="Citric Acidity Residuals", ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.citric.acid ~ x.citric.acid), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.residual.sugar = update(alcohol.red1.transformed, .~. -residual.sugar)$residuals
+x.residual.sugar = lm(residual.sugar~.,data=Wine_Data.red1[,-10])$residuals
+plot(x.residual.sugar, y.residual.sugar, xlab="Residual Sugars Residuals", ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.residual.sugar ~ x.residual.sugar), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.chlorides = update(alcohol.red1.transformed, .~. -chlorides)$residuals
+x.chlorides = lm(chlorides~.,data=Wine_Data.red1[,-10])$residuals
+plot(x.chlorides, y.chlorides, xlab="Chlorides Residuals", ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.chlorides ~ x.chlorides), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.free.sulfur.dioxide = update(alcohol.red1.transformed, .~. -free.sulfur.dioxide)$residuals
+x.free.sulfur.dioxide = lm(free.sulfur.dioxide~.,data=Wine_Data.red1[,-10])$residuals
+plot(x.free.sulfur.dioxide, y.free.sulfur.dioxide, xlab="Free Sulphur Dioxide Residuals", ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.free.sulfur.dioxide ~ x.free.sulfur.dioxide), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.density = update(alcohol.red1.transformed, .~. -density)$residuals
+x.density = lm(density~.,data=Wine_Data.red1[,-10])$residuals
+plot(x.density, y.density, xlab="Density Residuals", ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.density ~ x.density), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.pH = update(alcohol.red1.transformed, .~. -pH)$residuals
+x.pH = lm(pH~.,data=Wine_Data.red1[,-10])$residuals
+plot(x.pH, y.pH, xlab="pH Residuals", ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.pH ~ x.pH), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+y.sulphates = update(alcohol.red1.transformed, .~. -sulphates)$residuals
+x.sulphates = lm(sulphates~.,data=Wine_Data.red1[,-10])$residuals
+plot(x.sulphates, y.sulphates, xlab="pH Residuals", ylab="Alcohol Percentage Residuals", col='Darkblue', pch=3, size=3)
+abline(lm(y.sulphates ~ x.sulphates), col='Darkblue', lwd=2)
+abline(v = 0, col="red", lty=3)
+abline(h = 0, col="red", lty=3)
+```
+
+The linearity plots also seems to be similar to what was observed before, the points still seem to be scattered equally around the line. The transformation did not remedy departure from normality and constant variance. 
+
+\medskip
+\textbf{\textcolor{blue}{Conclusion}}
+
+The best model obtained from prediction and selection does not include total sulfur dioxide content. We selected the best model for prediction based on the lowest RMSE and we picked the best model for selection based on backward elimination method using partial F-tests. We observed departure from normality and constant variance in model. These departures did not get fixed upon doing a box-cox transformation. We would be more concerned about these departures if we wanted to develop confidence-prediction intervals around our point estimates. If we only cared about getting an accurate point estimate, which is generally the case for prediction models, these departures may not be that concerning.
